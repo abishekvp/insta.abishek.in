@@ -63,6 +63,8 @@ InstaVault Pro provides two account integration methods depending on your securi
 Connect via Meta's **Instagram API with Instagram Login** (Graph API):
 * **Security & Compliance**: Users log in on Instagram's own official consent screen. The server never sees or stores Instagram passwords or session cookies.
 * **Token Management**: Exchanged for a long-lived OAuth access token (~60 days), encrypted at rest using AES-256-GCM.
+* **Account Type Requirement**: **Meta strictly requires a Professional account (Creator or Business)** for all official Graph API OAuth integrations. Meta has discontinued personal account API access (the former Basic Display API was deprecated). Standard personal accounts cannot authorize via Meta OAuth.
+  * *Tip for Personal Profiles:* Any user can switch their personal Instagram account to a **Creator account** for free in under 30 seconds (in Instagram mobile app: *Settings & privacy* &gt; *Account type and tools* &gt; *Switch to professional account* &gt; *Creator*). Creator accounts are 100% free, do not require a business or Facebook page, and keep the user's personal profile looking and acting identically.
 * **Setup (via Admin Portal or `.env`)**:
   1. Create an application at [Meta for Developers](https://developers.facebook.com/apps).
   2. Add the **Instagram** product and configure **Instagram Login**.
@@ -70,8 +72,9 @@ Connect via Meta's **Instagram API with Instagram Login** (Graph API):
   4. Copy the auto-calculated redirect URI with one click (default: `http://localhost:5500/api/auth/instagram/oauth/callback`) and whitelist it under Meta App Settings.
   5. Select multiple scopes using the interactive scope picker (e.g., `instagram_business_basic`, `instagram_business_manage_messages`, `instagram_business_content_publish`).
 
-#### Option 2: Manual Self-Paste `sessionid` (Personal Automation)
-For personal testing or private automation where browser session access is preferred:
+#### Option 2: Manual Self-Paste `sessionid` (Supports ANY Profile: Personal, Private, or Professional)
+For personal testing, private accounts, or users who want to connect without switching to a Creator/Business account:
+* **Universal Account Compatibility**: Works for **ANY** Instagram account, including standard Personal accounts and Private profiles, bypassing Meta's Graph API restrictions.
 * **Manual Paste Only**: Due to the Same-Origin Policy and browser security boundaries, websites cannot "scan" or extract cookies from other domains. Users manually copy their own `sessionid` from browser DevTools into the modal.
 * **Encrypted at Rest**: Pasted session cookies are encrypted using AES-256-GCM before storage.
 * **Terms of Service Notice**: Driving Instagram using a browser session cookie is an unofficial integration method and violates Instagram's Terms of Service, carrying risks of checkpoint challenges or account suspension. A risk acknowledgement is required in the UI before linking.

@@ -47,6 +47,7 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
   const [isFetchingPreview, setIsFetchingPreview] = useState(false);
   const [previewProfile, setPreviewProfile] = useState<InstagramSessionProfile | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showProfessionalHelp, setShowProfessionalHelp] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [existingAccounts, setExistingAccounts] = useState<Account[]>([]);
@@ -518,6 +519,55 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
                         <Lock className="w-3.5 h-3.5" />
                         <span>Secured by Instagram OAuth 2.0 · token encrypted at rest</span>
                       </div>
+
+                      {/* Professional Account Notice & Helper */}
+                      <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800 text-xs space-y-3 mt-4">
+                        <div className="flex items-start gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <span className="font-semibold text-white">Meta API Requirement: Professional Account</span>
+                            <p className="text-zinc-400 leading-relaxed">
+                              Meta's official Graph API restricts third-party OAuth to <strong className="text-zinc-200">Professional accounts (Creator or Business)</strong>. Personal accounts cannot log in through official OAuth.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="pt-1 flex flex-col sm:flex-row gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowProfessionalHelp(!showProfessionalHelp)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 text-xs font-medium border border-zinc-700/60 transition"
+                          >
+                            <span>{showProfessionalHelp ? 'Hide Switch Guide' : 'How to switch to Creator in 30s (Free)'}</span>
+                            {showProfessionalHelp ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => { setTab('session'); setErrorMsg(''); }}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-brand-pink/15 hover:bg-brand-pink/25 text-brand-pink text-xs font-medium border border-brand-pink/30 transition"
+                          >
+                            <span>Connect Any Profile via Session ID</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {showProfessionalHelp && (
+                          <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 space-y-2 mt-2">
+                            <span className="font-semibold text-white block">Switching to a Creator account is 100% free & preserves your profile:</span>
+                            <ol className="list-decimal list-inside space-y-1.5 text-zinc-400 leading-relaxed pl-1">
+                              <li>Open the <strong className="text-zinc-200">Instagram mobile app</strong> & go to your <strong className="text-zinc-200">Profile</strong>.</li>
+                              <li>Tap the <strong className="text-zinc-200">Menu (☰)</strong> at top-right & select <strong className="text-zinc-200">Settings and privacy</strong>.</li>
+                              <li>Scroll to <strong className="text-zinc-200">For professionals</strong> & tap <strong className="text-zinc-200">Account type and tools</strong>.</li>
+                              <li>Tap <strong className="text-zinc-200">Switch to professional account</strong> & choose <strong className="text-zinc-200">Creator</strong>.</li>
+                              <li>Pick any category (e.g., <em>Digital Creator</em> or <em>Personal Blog</em>). You can toggle "Display on profile" off so it looks identical to a personal profile.</li>
+                            </ol>
+                            <p className="text-[11px] text-zinc-400 pt-1 border-t border-zinc-800/80">
+                              💡 <em>No Facebook Page or business documents required. You can switch back to personal anytime.</em>
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -548,6 +598,17 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
               {/* TAB 1: SESSION COOKIE (MANUAL SELF-PASTE) */}
               {tab === 'session' && (
                 <div className="space-y-5 max-w-2xl">
+                  {/* Any profile support banner */}
+                  <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span><strong>Works with ANY Instagram Profile:</strong> Personal, Private, Creator & Business.</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold shrink-0">
+                      Universal
+                    </span>
+                  </div>
+
                   <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 text-xs text-zinc-300 flex items-start gap-3">
                     <Sparkles className="w-4 h-4 text-brand-pink shrink-0 mt-0.5" />
                     <div className="leading-relaxed">
@@ -585,6 +646,43 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
                         I understand the ToS risks and accept responsibility for any account challenges or bans.
                       </span>
                     </label>
+                  </div>
+
+                  {/* Instagram Username & Mode Input Grid */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
+                        <span>Instagram Username</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-pink/15 text-brand-pink font-semibold">
+                          Recommended
+                        </span>
+                      </label>
+                      {username && (
+                        <button
+                          type="button"
+                          onClick={() => setUsername('')}
+                          className="text-[11px] text-zinc-500 hover:text-zinc-300 transition"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-xs font-mono font-semibold">@</span>
+                      <input
+                        type="text"
+                        placeholder="your_instagram_handle (bypasses 403 API restriction)"
+                        value={username}
+                        onChange={(e) => {
+                          setUsername(e.target.value.replace('@', '').trim());
+                          if (previewProfile) setPreviewProfile(null);
+                        }}
+                        className="w-full pl-8 pr-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-brand-pink text-xs text-white placeholder-zinc-500 focus:outline-none transition font-mono"
+                      />
+                    </div>
+                    <p className="text-[11px] text-zinc-500">
+                      Providing your username guarantees immediate connection even when Instagram's edge firewall restricts server-side lookups.
+                    </p>
                   </div>
 
                   <div>

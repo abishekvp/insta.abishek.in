@@ -451,13 +451,14 @@ router.post('/instagram/fetch-session', optionalAuth, async (req: AuthenticatedR
 // POST /api/auth/instagram/session-auto - Automatically Fetch & Link Instagram Account with Sessionid
 router.post('/instagram/session-auto', optionalAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { sessionCookie, fallbackUsername } = req.body;
+    const { sessionCookie, fallbackUsername, username } = req.body;
     if (!sessionCookie) {
       return res.status(400).json({ error: 'Instagram sessionid or cookie string is required.' });
     }
 
     const userId = req.user?.userId;
-    const result = await InstagramService.connectWithSessionAuto(sessionCookie, userId, fallbackUsername);
+    const targetUser = fallbackUsername || username;
+    const result = await InstagramService.connectWithSessionAuto(sessionCookie, userId, targetUser);
     return res.status(200).json(result);
   } catch (err: any) {
     return res.status(400).json({ error: err.message || 'Failed to auto-connect Instagram session.' });

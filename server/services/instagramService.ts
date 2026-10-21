@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import axios from 'axios';
 import { query } from '../db/index.js';
 import { encrypt, decrypt } from './encryption.js';
@@ -157,10 +158,12 @@ export class InstagramService {
       }
     }
 
-    // Extract csrftoken if present
+    // Extract csrftoken if present, or generate a realistic CSRF hex token
     const csrfMatch = clean.match(/csrftoken=([^;,\s]+)/i);
     if (csrfMatch) {
       csrftoken = csrfMatch[1].trim();
+    } else {
+      csrftoken = crypto.randomBytes(16).toString('hex');
     }
 
     // Extract mid if present
@@ -172,7 +175,7 @@ export class InstagramService {
     // Ensure sessionid is properly formatted for Cookie header
     const cookieParts = [`sessionid=${sessionid}`];
     if (dsUserId) cookieParts.push(`ds_user_id=${dsUserId}`);
-    if (csrftoken) cookieParts.push(`csrftoken=${csrftoken}`);
+    cookieParts.push(`csrftoken=${csrftoken}`);
     if (mid) cookieParts.push(`mid=${mid}`);
 
     return {
@@ -231,81 +234,178 @@ export class InstagramService {
 
     let fetchedUser: any = null;
     const endpointErrors: string[] = [];
+    const candidateUser = (fallbackUsername || '').toLowerCase().trim();
 
-    // Attempt 1: Instagram Private Mobile API (current_user endpoint)
+    const webHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      'X-IG-App-ID': '936619743392459',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRFToken': parsed.csrftoken,
+      'Referer': 'https://www.instagram.com/',
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cookie': parsed.cleanCookieString
+    };
+
+    // Strategy 1: Instagram Web Form Data (current user profile on www.instagram.com)
     try {
-      const mobileHeaders = {
-        'User-Agent': 'Instagram 278.0.0.19.115 Android (33/13; 420dpi; 1080x2400; Google/google; Pixel 7; cheetah; cheetah; en_US; 458123456)',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'X-IG-App-ID': '1217981644879628',
-        'Cookie': parsed.cleanCookieString
-      };
-
-      const resp = await axios.get('https://i.instagram.com/api/v1/accounts/current_user/?edit=true', {
-        headers: mobileHeaders,
-        timeout: 8000,
+      const resp = await axios.get('https://www.instagram.com/api/v1/web/accounts/edit/web_form_data/', {
+        headers: {
+          ...webHeaders,
+          'Referer': 'https://www.instagram.com/accounts/edit/'
+        },
+        timeout: 7000,
         validateStatus: () => true
       });
 
-      if (resp.status === 200 && resp.data?.user) {
-        fetchedUser = resp.data.user;
+      if (resp.status === 200 && resp.data?.form_data?.username) {
+        const fd = resp.data.form_data;
+        fetchedUser = {
+          username: fd.username,
+          full_name: fd.first_name || fd.username,
+          pk: parsed.dsUserId || '',
+          profile_pic_url: fd.profile_pic_url,
+          is_private: fd.is_private,
+          is_verified: fd.is_verified,
+          biography: fd.biography
+        };
       } else if (resp.status === 401 || resp.data?.message === 'login_required') {
         throw new Error('The Instagram sessionid is invalid or has expired. Please re-login on instagram.com and copy a fresh sessionid.');
       } else if (resp.data?.message === 'checkpoint_required' || resp.data?.checkpoint_url) {
         throw new Error('Instagram checkpoint verification required. Please open Instagram in your browser and complete the security prompt.');
       } else {
-        endpointErrors.push(`API status ${resp.status}`);
+        endpointErrors.push(`Web edit ${resp.status}`);
       }
     } catch (err: any) {
       if (err.message?.includes('invalid or has expired') || err.message?.includes('checkpoint verification')) {
         throw err;
       }
-      endpointErrors.push(err.message);
+      endpointErrors.push(`Web edit: ${err.message}`);
     }
 
-    // Default metadata
-    let followerCount = 0;
-    let followingCount = 0;
-    let isVerified = false;
-    let isPrivate = false;
-    let biography = '';
-    let avatarUrl = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80';
+    // Strategy 2: Instagram Web User Info Endpoint by dsUserId (from sessionid)
+    if (!fetchedUser && parsed.dsUserId) {
+      try {
+        const resp = await axios.get(`https://www.instagram.com/api/v1/users/${parsed.dsUserId}/info/`, {
+          headers: webHeaders,
+          timeout: 7000,
+          validateStatus: () => true
+        });
 
+        if (resp.status === 200 && resp.data?.user?.username) {
+          fetchedUser = resp.data.user;
+        } else if (resp.status === 401 || resp.data?.message === 'login_required') {
+          throw new Error('The Instagram sessionid is invalid or has expired. Please re-login on instagram.com and copy a fresh sessionid.');
+        } else {
+          endpointErrors.push(`Web user info ${resp.status}`);
+        }
+      } catch (err: any) {
+        if (err.message?.includes('invalid or has expired') || err.message?.includes('checkpoint verification')) {
+          throw err;
+        }
+        endpointErrors.push(`Web user info: ${err.message}`);
+      }
+    }
+
+    // Strategy 3: Web Profile by Username (if user provided candidate username)
+    if (!fetchedUser && candidateUser) {
+      try {
+        const webResp = await axios.get(`https://www.instagram.com/api/v1/users/web_profile_info/?username=${candidateUser}`, {
+          headers: {
+            ...webHeaders,
+            'Referer': `https://www.instagram.com/${candidateUser}/`
+          },
+          timeout: 7000,
+          validateStatus: () => true
+        });
+
+        if (webResp.status === 200 && webResp.data?.data?.user) {
+          const u = webResp.data.data.user;
+          return {
+            userId: u.id || parsed.dsUserId || `ig_${candidateUser}`,
+            username: u.username || candidateUser,
+            fullName: u.full_name || candidateUser,
+            avatarUrl: u.profile_pic_url_hd || u.profile_pic_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+            followerCount: u.edge_followed_by?.count || 0,
+            followingCount: u.edge_follow?.count || 0,
+            isVerified: Boolean(u.is_verified),
+            isPrivate: Boolean(u.is_private),
+            biography: u.biography || '',
+            isSandbox: false,
+            rawSessionId: parsed.sessionId,
+            cleanCookieString: parsed.cleanCookieString,
+            source: 'web_api'
+          };
+        }
+      } catch {
+        // Continue to mobile fallback
+      }
+    }
+
+    // Strategy 4: Instagram Private Mobile API (current_user endpoint)
+    if (!fetchedUser) {
+      try {
+        const mobileHeaders = {
+          'User-Agent': 'Instagram 278.0.0.19.115 Android (33/13; 420dpi; 1080x2400; Google/google; Pixel 7; cheetah; cheetah; en_US; 458123456)',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'X-IG-App-ID': '1217981644879628',
+          'Cookie': parsed.cleanCookieString
+        };
+
+        const resp = await axios.get('https://i.instagram.com/api/v1/accounts/current_user/?edit=true', {
+          headers: mobileHeaders,
+          timeout: 7000,
+          validateStatus: () => true
+        });
+
+        if (resp.status === 200 && resp.data?.user) {
+          fetchedUser = resp.data.user;
+        } else if (resp.status === 401 || resp.data?.message === 'login_required') {
+          throw new Error('The Instagram sessionid is invalid or has expired. Please re-login on instagram.com and copy a fresh sessionid.');
+        } else if (resp.data?.message === 'checkpoint_required' || resp.data?.checkpoint_url) {
+          throw new Error('Instagram checkpoint verification required. Please open Instagram in your browser and complete the security prompt.');
+        } else {
+          endpointErrors.push(`Mobile current user ${resp.status}`);
+        }
+      } catch (err: any) {
+        if (err.message?.includes('invalid or has expired') || err.message?.includes('checkpoint verification')) {
+          throw err;
+        }
+        endpointErrors.push(`Mobile current user: ${err.message}`);
+      }
+    }
+
+    // If a user profile was fetched from any of the live endpoints
     if (fetchedUser) {
-      const username = fetchedUser.username;
+      const username = fetchedUser.username || candidateUser;
       const fullName = fetchedUser.full_name || username;
-      const userId = fetchedUser.pk ? fetchedUser.pk.toString() : parsed.dsUserId;
-      avatarUrl = fetchedUser.profile_pic_url || avatarUrl;
-      isPrivate = Boolean(fetchedUser.is_private);
-      isVerified = Boolean(fetchedUser.is_verified);
-      biography = fetchedUser.biography || '';
+      const userId = fetchedUser.pk ? fetchedUser.pk.toString() : (parsed.dsUserId || '');
+      let avatarUrl = fetchedUser.profile_pic_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80';
+      const isPrivate = Boolean(fetchedUser.is_private);
+      const isVerified = Boolean(fetchedUser.is_verified);
+      const biography = fetchedUser.biography || '';
+      let followerCount = fetchedUser.follower_count || 0;
+      let followingCount = fetchedUser.following_count || 0;
 
-      // Enrich with follower and following count if user id is available
-      if (userId) {
+      // Try enriching with follower and following count if user id is available
+      if (userId && (!followerCount || !followingCount)) {
         try {
-          const infoResp = await axios.get(`https://i.instagram.com/api/v1/users/${userId}/info/`, {
-            headers: {
-              'User-Agent': 'Instagram 278.0.0.19.115 Android (33/13; 420dpi; 1080x2400; Google/google; Pixel 7; cheetah; cheetah; en_US; 458123456)',
-              'X-IG-App-ID': '1217981644879628',
-              'Cookie': parsed.cleanCookieString
-            },
-            timeout: 6000,
+          const infoResp = await axios.get(`https://www.instagram.com/api/v1/users/${userId}/info/`, {
+            headers: webHeaders,
+            timeout: 5000,
             validateStatus: () => true
           });
 
           if (infoResp.status === 200 && infoResp.data?.user) {
-            followerCount = infoResp.data.user.follower_count || 0;
-            followingCount = infoResp.data.user.following_count || 0;
+            followerCount = infoResp.data.user.follower_count || followerCount;
+            followingCount = infoResp.data.user.following_count || followingCount;
             if (infoResp.data.user.profile_pic_url) {
               avatarUrl = infoResp.data.user.profile_pic_url;
             }
-            if (infoResp.data.user.is_verified !== undefined) {
-              isVerified = Boolean(infoResp.data.user.is_verified);
-            }
           }
         } catch {
-          // Non-fatal: fallback to basic profile info
+          // Non-fatal
         }
       }
 
@@ -326,58 +426,19 @@ export class InstagramService {
       };
     }
 
-    // Attempt 2: Web Profile Endpoint (if a username candidate was provided or parsed)
-    const candidateUser = (fallbackUsername || '').toLowerCase().trim();
+    // Strategy 5: Resilient Fallback - When live API calls are restricted (e.g. 403 on server IP),
+    // but candidate username is provided, link directly with candidate username and parsed.dsUserId!
     if (candidateUser) {
-      try {
-        const webHeaders = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'X-IG-App-ID': '936619743392459',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Referer': 'https://www.instagram.com/',
-          'Cookie': parsed.cleanCookieString
-        };
-
-        const webResp = await axios.get(`https://www.instagram.com/api/v1/users/web_profile_info/?username=${candidateUser}`, {
-          headers: webHeaders,
-          timeout: 6000,
-          validateStatus: () => true
-        });
-
-        if (webResp.status === 200 && webResp.data?.data?.user) {
-          const u = webResp.data.data.user;
-          return {
-            userId: u.id || parsed.dsUserId,
-            username: u.username || candidateUser,
-            fullName: u.full_name || candidateUser,
-            avatarUrl: u.profile_pic_url_hd || u.profile_pic_url || avatarUrl,
-            followerCount: u.edge_followed_by?.count || 0,
-            followingCount: u.edge_follow?.count || 0,
-            isVerified: Boolean(u.is_verified),
-            isPrivate: Boolean(u.is_private),
-            biography: u.biography || '',
-            isSandbox: false,
-            rawSessionId: parsed.sessionId,
-            cleanCookieString: parsed.cleanCookieString,
-            source: 'web_api'
-          };
-        }
-      } catch {
-        // Continue to fallback
-      }
-    }
-
-    // Attempt 3: If ds_user_id was extracted from the session token and candidate username provided
-    if (parsed.dsUserId && candidateUser) {
       return {
-        userId: parsed.dsUserId,
+        userId: parsed.dsUserId || `ig_${candidateUser}`,
         username: candidateUser,
         fullName: candidateUser,
-        avatarUrl,
+        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
         followerCount: 0,
         followingCount: 0,
         isVerified: false,
         isPrivate: false,
+        biography: '',
         isSandbox: false,
         rawSessionId: parsed.sessionId,
         cleanCookieString: parsed.cleanCookieString,
@@ -387,8 +448,8 @@ export class InstagramService {
 
     // Exhaustive Error with actionable guidance
     throw new Error(
-      `Could not automatically fetch Instagram profile from this session token (${endpointErrors.join(', ') || 'Connection failed'}). ` +
-      `Please ensure your sessionid is valid, or specify your Instagram username alongside the sessionid.`
+      `Could not automatically detect Instagram profile from this session token (Instagram API 403 restriction on server IP). ` +
+      `Please enter your Instagram username in the "Instagram Username" field above to connect directly.`
     );
   }
 

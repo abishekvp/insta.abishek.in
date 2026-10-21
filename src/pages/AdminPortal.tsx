@@ -24,7 +24,8 @@ import {
   X,
   Instagram,
   KeyRound,
-  Globe
+  Globe,
+  AlertTriangle
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { ProductConfig, User, AdminStats } from '../types';
@@ -369,6 +370,17 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Meta Developer Dashboard</span>
               </a>
+            </div>
+
+            {/* Meta Account Type Info Alert */}
+            <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-semibold text-white">Notice on Instagram Account Types:</span>
+                <p className="text-zinc-300 leading-relaxed">
+                  Meta's official Graph API strictly requires accounts to be <strong className="text-white">Professional (Creator or Business)</strong>. Standard Personal profiles cannot authenticate via Official OAuth. Users with personal profiles can either switch to a free Creator account in 30 seconds (no business/FB page needed) or connect directly using the <strong className="text-white">Session ID</strong> tab in the Connect Account modal.
+                </p>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
