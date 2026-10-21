@@ -41,15 +41,32 @@ export const QuickUrlDownloaderModal: React.FC<Props> = ({ onClose, onSuccess })
     setIsLoading(true);
 
     try {
-      await ApiService.saveStory({
-        targetUsername: inspectedMedia.targetUsername,
-        userFullName: `@${inspectedMedia.targetUsername}`,
-        userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        mediaType: inspectedMedia.mediaType,
-        mediaUrl: inspectedMedia.mediaUrl,
-        caption: caption,
-        ttlDays: ttlDays
-      });
+      if (inspectedMedia.stories && inspectedMedia.stories.length > 0) {
+        // Bulk save all active stories for this creator
+        for (const st of inspectedMedia.stories) {
+          await ApiService.saveStory({
+            targetUsername: inspectedMedia.targetUsername,
+            userFullName: inspectedMedia.userFullName || `@${inspectedMedia.targetUsername}`,
+            userAvatar: inspectedMedia.userAvatar || '',
+            mediaType: st.mediaType,
+            mediaUrl: st.mediaUrl,
+            caption: st.caption || caption || `Story from @${inspectedMedia.targetUsername}`,
+            postedAt: st.takenAt,
+            duration: st.duration,
+            ttlDays: ttlDays
+          });
+        }
+      } else {
+        await ApiService.saveStory({
+          targetUsername: inspectedMedia.targetUsername,
+          userFullName: inspectedMedia.userFullName || `@${inspectedMedia.targetUsername}`,
+          userAvatar: inspectedMedia.userAvatar || '',
+          mediaType: inspectedMedia.mediaType,
+          mediaUrl: inspectedMedia.mediaUrl,
+          caption: caption || `Story from @${inspectedMedia.targetUsername}`,
+          ttlDays: ttlDays
+        });
+      }
 
       onSuccess();
       onClose();
@@ -95,11 +112,11 @@ export const QuickUrlDownloaderModal: React.FC<Props> = ({ onClose, onSuccess })
             <form onSubmit={handleInspect} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                  Instagram Story or Post Link
+                  Instagram Username or Story / Post Link
                 </label>
                 <input
-                  type="url"
-                  placeholder="https://www.instagram.com/stories/username/123456..."
+                  type="text"
+                  placeholder="@username or https://www.instagram.com/stories/..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   required
@@ -178,7 +195,11 @@ export const QuickUrlDownloaderModal: React.FC<Props> = ({ onClose, onSuccess })
                   disabled={isLoading}
                   className="flex-1 py-2.5 px-4 rounded-xl ig-gradient-bg text-white font-semibold text-xs shadow-brand hover:opacity-95 transition disabled:opacity-50"
                 >
-                  {isLoading ? 'Saving...' : 'Confirm & Save to Vault (30d)'}
+                  {isLoading
+                    ? 'Saving Stories...'
+                    : inspectedMedia.storyCount && inspectedMedia.storyCount > 1
+                    ? `Confirm & Archive All ${inspectedMedia.storyCount} Stories (30d)`
+                    : 'Confirm & Save to Vault (30d)'}
                 </button>
               </div>
             </div>

@@ -236,6 +236,23 @@ export const ApiService = {
     return res.data;
   },
 
+  async syncTargetStories(username: string, customTtlDays?: number): Promise<{
+    success: boolean;
+    targetUsername: string;
+    newStoriesSaved: number;
+    totalStoriesFound: number;
+    message: string;
+    stories: Story[];
+  }> {
+    const res = await api.post('/stories/sync-target', { username, customTtlDays });
+    return res.data;
+  },
+
+  async fetchLiveStories(username: string): Promise<any> {
+    const res = await api.get(`/stories/live/${encodeURIComponent(username)}`);
+    return res.data;
+  },
+
   // Follower Intelligence
   async getFollowers(params: {
     filter?: string;

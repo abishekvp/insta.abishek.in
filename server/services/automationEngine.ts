@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { query } from '../db/index.js';
 import { StorySaverService } from './storySaverService.js';
 import { ConfigService } from './configService.js';
+import { RealStoryFetcherService } from './realStoryFetcher.js';
 
 export interface WatchlistTarget {
   id: string;
@@ -63,16 +64,37 @@ export class AutomationEngine {
 
     if (activeTargets.length === 0) return { checked: 0, newStoriesSaved: 0 };
 
+    let totalNewStories = 0;
     const now = new Date().toISOString();
+
     for (const target of activeTargets) {
-      await query.run(`
-        UPDATE watchlist_targets SET last_checked_at = ? WHERE id = ?
-      `, [now, target.id]);
+      try {
+        const syncResult = await StorySaverService.syncStoriesForUser({
+          targetUsername: target.target_username,
+          userId: target.user_id,
+          accountId: target.account_id,
+          customTtlDays: target.retention_days
+        });
+
+        totalNewStories += syncResult.newStoriesSaved;
+
+        await query.run(`
+          UPDATE watchlist_targets
+          SET last_checked_at = ?,
+              stories_saved_count = stories_saved_count + ?
+          WHERE id = ?
+        `, [now, syncResult.newStoriesSaved, target.id]);
+      } catch (err: any) {
+        console.error(`[AutoArchiver] Error syncing stories for @${target.target_username}:`, err.message);
+        await query.run(`
+          UPDATE watchlist_targets SET last_checked_at = ? WHERE id = ?
+        `, [now, target.id]);
+      }
     }
 
     return {
       checked: activeTargets.length,
-      newStoriesSaved: 0,
+      newStoriesSaved: totalNewStories,
       timestamp: now
     };
   }
@@ -122,7 +144,18 @@ export class AutomationEngine {
 
     const id = `target_${cleanUser}_${Date.now()}`;
     const now = new Date().toISOString();
-    const avatar = params.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    let avatar = params.avatarUrl || '';
+    let targetFullName = params.fullName || cleanUser;
+
+    try {
+      const realProfile = await RealStoryFetcherService.fetchProfile(cleanUser);
+      if (realProfile.avatarUrl) avatar = realProfile.avatarUrl;
+      if (realProfile.fullName) targetFullName = realProfile.fullName;
+    } catch {}
+
+    if (!avatar) {
+      avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanUser)}&background=e1306c&color=fff&size=150`;
+    }
 
     await query.run(`
       INSERT INTO watchlist_targets (
@@ -135,7 +168,7 @@ export class AutomationEngine {
       params.userId || null,
       params.accountId || null,
       cleanUser,
-      params.fullName || cleanUser,
+      targetFullName,
       avatar,
       params.frequencyMinutes || 60,
       params.autoDownload !== undefined ? (params.autoDownload ? 1 : 0) : 1,

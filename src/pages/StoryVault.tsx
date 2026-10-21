@@ -92,7 +92,7 @@ export const StoryVault: React.FC<Props> = ({ onOpenQuickSave }) => {
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl ig-gradient-bg text-white font-semibold text-xs shadow-brand hover:opacity-95 transition active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>Save Story URL</span>
+          <span>Save Story / Fetch by User</span>
         </button>
       </div>
 

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { query } from '../db/index.js';
 import { encrypt, decrypt } from './encryption.js';
+import { RealStoryFetcherService } from './realStoryFetcher.js';
 
 export interface InstagramAccount {
   id: string;
@@ -426,30 +427,34 @@ export class InstagramService {
       };
     }
 
-    // Strategy 5: Resilient Fallback - When live API calls are restricted (e.g. 403 on server IP),
-    // but candidate username is provided, link directly with candidate username and parsed.dsUserId!
+    // Strategy 5: Real Instagram Public Profile Fetcher (Zero-Login Web Engine)
     if (candidateUser) {
-      return {
-        userId: parsed.dsUserId || `ig_${candidateUser}`,
-        username: candidateUser,
-        fullName: candidateUser,
-        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-        followerCount: 0,
-        followingCount: 0,
-        isVerified: false,
-        isPrivate: false,
-        biography: '',
-        isSandbox: false,
-        rawSessionId: parsed.sessionId,
-        cleanCookieString: parsed.cleanCookieString,
-        source: 'fallback_detected'
-      };
+      try {
+        const real = await RealStoryFetcherService.fetchProfile(candidateUser);
+        return {
+          userId: real.userId || parsed.dsUserId || `ig_${candidateUser}`,
+          username: real.username,
+          fullName: real.fullName,
+          avatarUrl: real.avatarUrl,
+          followerCount: real.followersCount,
+          followingCount: real.followingCount,
+          isVerified: real.isVerified,
+          isPrivate: real.isPrivate,
+          biography: real.biography,
+          isSandbox: false,
+          rawSessionId: parsed.sessionId,
+          cleanCookieString: parsed.cleanCookieString,
+          source: 'live_api'
+        };
+      } catch (err: any) {
+        console.warn(`[InstagramService] Real profile fetch fallback for @${candidateUser}: ${err.message}`);
+      }
     }
 
     // Exhaustive Error with actionable guidance
     throw new Error(
-      `Could not automatically detect Instagram profile from this session token (Instagram API 403 restriction on server IP). ` +
-      `Please enter your Instagram username in the "Instagram Username" field above to connect directly.`
+      `Could not automatically detect Instagram profile from this session token. ` +
+      `Please provide your Instagram username in the "Instagram Username" field to connect directly with your real live profile.`
     );
   }
 
@@ -753,26 +758,6 @@ export class InstagramService {
   }
 
   static async inspectInstagramUrl(url: string) {
-    if (!url || !url.includes('instagram.com')) {
-      throw new Error('Please provide a valid instagram.com URL (e.g. /stories/username/123... or /p/...)');
-    }
-
-    const isStory = url.includes('/stories/');
-    let targetUsername = 'unknown_creator';
-
-    if (isStory) {
-      const match = url.match(/\/stories\/([^\/\?]+)/);
-      if (match && match[1]) {
-        targetUsername = match[1];
-      }
-    }
-
-    return {
-      mediaType: isStory ? 'image' : 'video',
-      targetUsername,
-      mediaUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1080&auto=format&fit=crop&q=80',
-      caption: `Inspected from URL: ${url}`,
-      detectedAt: new Date().toISOString()
-    };
+    return RealStoryFetcherService.inspectInstagramUrl(url);
   }
 }

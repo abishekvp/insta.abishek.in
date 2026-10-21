@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { query } from '../db/index.js';
 import { ConfigService } from './configService.js';
+import { RealStoryFetcherService } from './realStoryFetcher.js';
 
 export interface StoryRecord {
   id: string;
@@ -113,6 +114,89 @@ export class StorySaverService {
     ]);
 
     return (await query.get<StoryRecord>(`SELECT ${STORY_META_FIELDS} FROM saved_stories WHERE id = ?`, [storyId]))!;
+  }
+
+  /**
+   * Automatically fetch and sync active stories for any user using RealStoryFetcherService.
+   */
+  static async syncStoriesForUser(params: {
+    targetUsername: string;
+    userId?: string;
+    accountId?: string;
+    customTtlDays?: number;
+  }): Promise<{
+    success: boolean;
+    targetUsername: string;
+    newStoriesSaved: number;
+    totalStoriesFound: number;
+    message: string;
+    stories: StoryRecord[];
+  }> {
+    const cleanUser = params.targetUsername.toLowerCase().replace('@', '').trim();
+    const fetchResult = await RealStoryFetcherService.fetchStories(cleanUser);
+
+    if (fetchResult.isPrivate) {
+      return {
+        success: false,
+        targetUsername: cleanUser,
+        newStoriesSaved: 0,
+        totalStoriesFound: 0,
+        message: fetchResult.message || 'Account is private. Stories cannot be fetched anonymously.',
+        stories: []
+      };
+    }
+
+    let savedCount = 0;
+    const savedRecords: StoryRecord[] = [];
+
+    // Get existing saved stories for this target user to avoid duplicates
+    const existing = await query.all<{ id: string; media_url: string }>(
+      'SELECT id, media_url FROM saved_stories WHERE target_username = ? AND status = "active"',
+      [cleanUser]
+    );
+    const existingUrls = new Set(existing.map((e) => e.media_url));
+
+    for (const item of fetchResult.items) {
+      if (existingUrls.has(item.mediaUrl)) {
+        continue;
+      }
+
+      try {
+        const record = await this.saveStory({
+          accountId: params.accountId,
+          userId: params.userId,
+          targetUsername: cleanUser,
+          userFullName: fetchResult.profile?.fullName || `@${cleanUser}`,
+          userAvatar: fetchResult.profile?.avatarUrl || '',
+          mediaType: item.mediaType,
+          mediaUrl: item.mediaUrl,
+          caption: item.caption || `Story from @${cleanUser}`,
+          postedAt: item.takenAt,
+          duration: item.duration,
+          customTtlDays: params.customTtlDays
+        });
+
+        savedRecords.push(record);
+        savedCount++;
+        existingUrls.add(item.mediaUrl);
+      } catch (err: any) {
+        console.warn(`Failed to save story item for @${cleanUser}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      targetUsername: cleanUser,
+      newStoriesSaved: savedCount,
+      totalStoriesFound: fetchResult.items.length,
+      message:
+        savedCount > 0
+          ? `Successfully saved ${savedCount} new stories for @${cleanUser} with 30-day retention.`
+          : fetchResult.items.length > 0
+          ? `All ${fetchResult.items.length} active stories for @${cleanUser} are already archived in the Vault.`
+          : `No active stories found for @${cleanUser} in the last 24 hours.`,
+      stories: savedRecords
+    };
   }
 
   /**

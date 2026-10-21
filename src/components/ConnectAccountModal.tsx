@@ -746,10 +746,20 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
                             {previewProfile.isVerified && (
                               <span className="text-sky-400 text-sm font-bold" title="Verified">✓</span>
                             )}
+                            {previewProfile.isPrivate && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
+                                Private Account
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-zinc-400 truncate">
                             {previewProfile.fullName || previewProfile.username}
                           </p>
+                          {previewProfile.biography && (
+                            <p className="text-[11px] text-zinc-400 italic line-clamp-1 mt-0.5">
+                              "{previewProfile.biography}"
+                            </p>
+                          )}
                           <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-300 font-mono">
                             <span><strong className="text-white font-semibold">{previewProfile.followerCount.toLocaleString()}</strong> followers</span>
                             <span>•</span>
@@ -817,34 +827,7 @@ export const ConnectAccountModal: React.FC<Props> = ({ onClose, onSuccess }) => 
                       </p>
                     )}
 
-                  {/* ADVANCED COLLAPSIBLE FOR MANUAL USERNAME */}
-                  <div className="pt-2 border-t border-zinc-800/80">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced(!showAdvanced)}
-                      className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition"
-                    >
-                      {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      <span>Advanced options (Specify custom username or override)</span>
-                    </button>
 
-                    {showAdvanced && (
-                      <div className="mt-3 space-y-3">
-                        <div>
-                          <label className="block text-xs font-medium text-zinc-400 mb-1">
-                            Instagram Username (Optional Override)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Leave blank to auto-detect from sessionid"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value.replace('@', ''))}
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-brand-pink text-xs text-white placeholder-zinc-500 focus:outline-none transition"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
                   {/* How to get sessionid guide */}
                   <div className="p-4 rounded-xl bg-zinc-950/40 border border-zinc-800/60 text-xs text-zinc-400 space-y-2">

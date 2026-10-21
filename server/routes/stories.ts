@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { StorySaverService } from '../services/storySaverService.js';
 import { InstagramService } from '../services/instagramService.js';
+import { RealStoryFetcherService } from '../services/realStoryFetcher.js';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -29,6 +30,41 @@ router.get('/groups', optionalAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const groups = await StorySaverService.getStoryGroups(req.user?.userId);
     return res.status(200).json({ groups });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stories/live/:username - Fetch live stories directly without requiring session or saving
+router.get('/live/:username', async (req, res) => {
+  try {
+    const username = req.params.username;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    const result = await RealStoryFetcherService.fetchStories(username);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/stories/sync-target - Fetch and auto-archive all active stories for a target username
+router.post('/sync-target', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { username, customTtlDays, accountId } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required to sync stories' });
+    }
+
+    const result = await StorySaverService.syncStoriesForUser({
+      targetUsername: username,
+      userId: req.user?.userId,
+      accountId,
+      customTtlDays
+    });
+
+    return res.status(200).json(result);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

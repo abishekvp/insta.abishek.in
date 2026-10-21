@@ -11,7 +11,9 @@ import {
   ToggleRight,
   ShieldCheck,
   Sparkles,
-  Instagram
+  Instagram,
+  RefreshCw,
+  Film
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { WatchlistTarget } from '../types';
@@ -23,6 +25,7 @@ export const AutoArchiver: React.FC = () => {
   const [checkFrequency, setCheckFrequency] = useState(60);
   const [isLoading, setIsLoading] = useState(false);
   const [isExecutingJob, setIsExecutingJob] = useState(false);
+  const [syncingTargetId, setSyncingTargetId] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState('');
 
   const loadWatchlist = async () => {
@@ -85,12 +88,26 @@ export const AutoArchiver: React.FC = () => {
     }
   };
 
+  const handleSyncTargetNow = async (targetUsername: string, targetId: string) => {
+    setSyncingTargetId(targetId);
+    setNoticeMsg('');
+    try {
+      const res = await ApiService.syncTargetStories(targetUsername);
+      setNoticeMsg(res.message);
+      await loadWatchlist();
+    } catch (err: any) {
+      setNoticeMsg(`Failed to sync stories for @${targetUsername}: ${err.message}`);
+    } finally {
+      setSyncingTargetId(null);
+    }
+  };
+
   const handleRunArchiverNow = async () => {
     setIsExecutingJob(true);
     setNoticeMsg('');
     try {
       const res = await ApiService.runAutoArchiverNow();
-      setNoticeMsg(`Archiver completed! Checked ${res.checked} friends. All new stories saved with 30-day retention.`);
+      setNoticeMsg(`Archiver job completed! Checked ${res.checked} targets. Saved ${res.newStoriesSaved} new stories with 30-day retention.`);
       await loadWatchlist();
     } catch (err: any) {
       setNoticeMsg(`Archiver job error: ${err.message}`);
@@ -252,15 +269,25 @@ export const AutoArchiver: React.FC = () => {
                     <span className="text-white font-medium">Every {target.check_frequency_minutes}m</span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Retention:</span>
-                    <span className="text-emerald-400 font-medium">{target.retention_days || 30} Days</span>
+                    <span className="text-zinc-500 block">Stories Archived:</span>
+                    <span className="text-brand-pink font-semibold flex items-center gap-1">
+                      <Film className="w-3 h-3" />
+                      {target.stories_saved_count || 0} Saved
+                    </span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
-                  <span>
-                    Last checked: {target.last_checked_at ? new Date(target.last_checked_at).toLocaleTimeString() : 'Pending first scan'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSyncTargetNow(target.target_username, target.id)}
+                    disabled={syncingTargetId === target.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${syncingTargetId === target.id ? 'animate-spin text-brand-pink' : ''}`} />
+                    <span>{syncingTargetId === target.id ? 'Fetching...' : 'Sync Stories Now'}</span>
+                  </button>
+
                   <button
                     onClick={() => handleRemoveTarget(target.id)}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition"
