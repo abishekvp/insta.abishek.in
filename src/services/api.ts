@@ -64,6 +64,16 @@ export const ApiService = {
     return res.data;
   },
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return res.data;
+  },
+
+  async changeName(fullName: string): Promise<{ success: boolean; user: User; message: string }> {
+    const res = await api.post('/auth/change-name', { fullName });
+    return res.data;
+  },
+
   // Instagram Connection — Option 1: Official OAuth (Instagram Login)
   async getInstagramOAuthStatus(): Promise<{ configured: boolean }> {
     const res = await api.get('/auth/instagram/oauth/status');
@@ -153,6 +163,26 @@ export const ApiService = {
 
   async getAccount(): Promise<{ account: Account | null }> {
     const res = await api.get('/auth/account');
+    return res.data;
+  },
+
+  async getAccounts(): Promise<{ accounts: Account[] }> {
+    const res = await api.get('/auth/accounts');
+    return res.data;
+  },
+
+  async removeAccount(accountId: string): Promise<{ success: boolean; message: string; username?: string }> {
+    const res = await api.delete(`/auth/accounts/${accountId}`);
+    return res.data;
+  },
+
+  async disconnectAccount(accountId?: string): Promise<{ success: boolean; message: string; username?: string }> {
+    const res = await api.post('/auth/account/disconnect', { accountId });
+    return res.data;
+  },
+
+  async switchActiveAccount(accountId: string): Promise<{ success: boolean; account: Account }> {
+    const res = await api.post(`/auth/accounts/${accountId}/switch`);
     return res.data;
   },
 
@@ -323,6 +353,11 @@ export const ApiService = {
 
   async deleteUser(userId: string) {
     const res = await api.delete(`/admin/users/${userId}`);
+    return res.data;
+  },
+
+  async adminResetPassword(userId: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.post(`/admin/users/${userId}/password`, { newPassword });
     return res.data;
   },
 

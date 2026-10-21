@@ -277,8 +277,12 @@ export class StorySaverService {
       const formatted = this.formatBytes(totalReclaimed);
 
       await query.run(`
-        INSERT OR REPLACE INTO storage_stats (key, numeric_value, text_value, updated_at)
+        INSERT INTO storage_stats (key, numeric_value, text_value, updated_at)
         VALUES ('purged_bytes_saved', ?, ?, ?)
+        ON CONFLICT (key) DO UPDATE SET
+          numeric_value = EXCLUDED.numeric_value,
+          text_value = EXCLUDED.text_value,
+          updated_at = EXCLUDED.updated_at
       `, [totalReclaimed, formatted, now]);
     }
 

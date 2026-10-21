@@ -578,6 +578,22 @@ export class InstagramService {
     return safe;
   }
 
+  static sanitizeAccounts(accounts: InstagramAccount[]): Partial<InstagramAccount>[] {
+    return accounts.map((a) => this.sanitizeAccount(a)).filter((a): a is Partial<InstagramAccount> => Boolean(a));
+  }
+
+  static async getAccounts(userId?: string): Promise<InstagramAccount[]> {
+    if (userId) {
+      return query.all<InstagramAccount>(
+        'SELECT * FROM accounts WHERE user_id = ? OR user_id IS NULL ORDER BY is_active DESC, last_synced_at DESC',
+        [userId]
+      );
+    }
+    return query.all<InstagramAccount>(
+      'SELECT * FROM accounts ORDER BY is_active DESC, last_synced_at DESC'
+    );
+  }
+
   static async getActiveAccount(userId?: string): Promise<InstagramAccount | undefined> {
     if (userId) {
       const userAcc = await query.get<InstagramAccount>(
@@ -589,6 +605,90 @@ export class InstagramService {
     return query.get<InstagramAccount>(
       'SELECT * FROM accounts WHERE is_active = 1 ORDER BY last_synced_at DESC LIMIT 1'
     );
+  }
+
+  static async removeAccount(
+    accountId: string,
+    userId?: string,
+    isAdmin = false
+  ): Promise<{ success: boolean; message: string; username: string }> {
+    const acc = await query.get<InstagramAccount>('SELECT * FROM accounts WHERE id = ?', [accountId]);
+    if (!acc) {
+      throw new Error('Connected account not found.');
+    }
+    if (userId && acc.user_id && acc.user_id !== userId && !isAdmin) {
+      throw new Error('You do not have permission to remove this connected account.');
+    }
+
+    const wasActive = acc.is_active === 1;
+    const username = acc.username;
+
+    // Clean up dependent child tables first
+    await query.run('DELETE FROM saved_stories WHERE account_id = ?', [accountId]);
+    await query.run('DELETE FROM watchlist_targets WHERE account_id = ?', [accountId]);
+    await query.run('DELETE FROM followers WHERE account_id = ?', [accountId]);
+    await query.run('DELETE FROM accounts WHERE id = ?', [accountId]);
+
+    // If the removed account was active, set the most recent remaining account to active
+    if (wasActive) {
+      const remaining = await query.all<InstagramAccount>(
+        userId
+          ? 'SELECT * FROM accounts WHERE (user_id = ? OR user_id IS NULL) ORDER BY last_synced_at DESC LIMIT 1'
+          : 'SELECT * FROM accounts ORDER BY last_synced_at DESC LIMIT 1',
+        userId ? [userId] : []
+      );
+      if (remaining.length > 0) {
+        await query.run('UPDATE accounts SET is_active = 1 WHERE id = ?', [remaining[0].id]);
+      }
+    }
+
+    return {
+      success: true,
+      username,
+      message: `Account @${username} was removed from connected accounts.`
+    };
+  }
+
+  static async disconnectAccount(
+    userId?: string,
+    accountId?: string
+  ): Promise<{ success: boolean; message: string; username: string }> {
+    let targetAcc: InstagramAccount | undefined;
+    if (accountId) {
+      targetAcc = await query.get<InstagramAccount>('SELECT * FROM accounts WHERE id = ?', [accountId]);
+    } else {
+      targetAcc = await this.getActiveAccount(userId);
+    }
+
+    if (!targetAcc) {
+      throw new Error('No connected Instagram account found to disconnect.');
+    }
+
+    return this.removeAccount(targetAcc.id, userId, true);
+  }
+
+  static async switchActiveAccount(accountId: string, userId?: string): Promise<Partial<InstagramAccount>> {
+    const acc = await query.get<InstagramAccount>('SELECT * FROM accounts WHERE id = ?', [accountId]);
+    if (!acc) {
+      throw new Error('Account not found.');
+    }
+    if (userId && acc.user_id && acc.user_id !== userId) {
+      throw new Error('You do not have permission to access this account.');
+    }
+
+    // Set other accounts to inactive
+    if (userId) {
+      await query.run('UPDATE accounts SET is_active = 0 WHERE user_id = ? OR user_id IS NULL', [userId]);
+    } else {
+      await query.run('UPDATE accounts SET is_active = 0');
+    }
+
+    // Activate selected account
+    const now = new Date().toISOString();
+    await query.run('UPDATE accounts SET is_active = 1, last_synced_at = ? WHERE id = ?', [now, accountId]);
+
+    const updated = await query.get<InstagramAccount>('SELECT * FROM accounts WHERE id = ?', [accountId]);
+    return this.sanitizeAccount(updated)!;
   }
 
   static async inspectInstagramUrl(url: string) {

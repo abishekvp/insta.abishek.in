@@ -25,12 +25,13 @@ All product-related configurations and OAuth integrations are managed live by Ad
 
 ### 2. Strict Production Environment (Zero Hardcoded Defaults)
 In production mode, the application enforces strict environment validation. Critical secrets and connection paths must be explicitly provided in `.env`:
-* **`DATABASE_URL`**: Path or URL for SQLite database where all records and media BLOBs are maintained (e.g. `./instavault.db`).
+* **`DATABASE_URL`**: Cloud PostgreSQL connection string where all records, accounts, and media BLOBs are maintained (e.g. `postgres://user:password@db.prisma.io:5432/postgres?sslmode=require`).
 * **`APP_SECRET`**: Master cryptographic key for AES-256-GCM encryption and HMAC token signing (minimum 32 characters).
 * **`PORT`**: Network port (e.g. `5500`).
 
-### 3. Command to Make User Admin
-To promote an existing user or create a new administrator account by email:
+### 3. User & Admin Management CLI Commands
+
+#### Make User Admin:
 ```bash
 # Promote existing user or create new admin with generated password
 npm run make:admin -- admin@example.com
@@ -39,7 +40,22 @@ npm run make:admin -- admin@example.com
 npm run make:admin -- admin@example.com "MySecurePass123!" "Abishek V"
 ```
 
-### 4. Instagram Account Connection Methods
+#### Set User Password (CLI):
+```bash
+# Set a new explicit password for any registered user:
+npm run set:password -- user@example.com "MyNewSecurePassword#2026"
+
+# Or generate a strong random temporary password automatically:
+npm run set:password -- user@example.com
+```
+
+### 4. Self-Service Profile & Password Management on the Site
+Authenticated users can manage their account directly on the site via **Account & Security (`/security`)** or by clicking their avatar in the navigation bar:
+* **Change Display Name**: Update full name in real time (`POST /api/auth/change-name`), immediately updating the navigation bar and audit logs.
+* **Change Password**: Securely update account credentials with required current password verification (`POST /api/auth/change-password`), enforcing minimum 8 characters and uniqueness from current password.
+* **Admin Portal Password Reset**: Administrators can also set/reset any user's password directly from the user table in the Admin Portal (`/admin`).
+
+### 5. Instagram Account Connection Methods
 
 InstaVault Pro provides two account integration methods depending on your security, automation, and compliance requirements:
 
@@ -74,7 +90,7 @@ npm run session:fetch -- "6528919%3AbB7j9x1f82y%3A12%3AY4z9" admin@example.com
 ## 🛠️ Tech Stack
 
 - **Monolith Server**: Node.js, Express 4, TypeScript, Helmet, CORS, Express Rate Limit, Node-Cron
-- **Database**: SQLite3 with WAL mode (dynamic schema initialization)
+- **Database**: Cloud PostgreSQL via `pg` connection pool with dynamic schema initialization and BYTEA binary BLOB media storage
 - **Security**: AES-256-GCM credential encryption, HMAC-SHA256 bearer tokens, Scrypt password hashing with unique salts
 - **Frontend**: React 18, React Router 6, Tailwind CSS, Lucide Icons, Vite 6
 - **Storage**: Pure database binary BLOB persistence with automated 30-day TTL media purging (zero local filesystem processing)
@@ -91,7 +107,7 @@ cp .env.example .env
 Ensure all required variables are set:
 ```env
 PORT=5500
-DATABASE_URL="./instavault.db"
+DATABASE_URL="postgres://username:password@db.prisma.io:5432/postgres?sslmode=require"
 APP_SECRET="prod-instavault-enterprise-master-cryptographic-key-64ch-sec"
 ```
 

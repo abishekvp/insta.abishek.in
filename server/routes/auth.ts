@@ -167,6 +167,131 @@ router.get('/me', optionalAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// POST /api/auth/change-password - Change current user's password (requires current password)
+router.post('/change-password', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current password and new password are required.' });
+    }
+
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+    }
+
+    const userId = req.user!.userId;
+    const user = await query.get<{ id: string; email: string; password_hash: string }>(
+      'SELECT id, email, password_hash FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // Verify current password
+    const isCurrentValid = PasswordService.verifyPassword(currentPassword, user.password_hash);
+    if (!isCurrentValid) {
+      return res.status(400).json({ error: 'Incorrect current password. Please try again.' });
+    }
+
+    // Ensure new password is not identical to current password
+    const isSame = PasswordService.verifyPassword(newPassword, user.password_hash);
+    if (isSame) {
+      return res.status(400).json({ error: 'New password must be different from your current password.' });
+    }
+
+    const newHash = PasswordService.hashPassword(newPassword);
+    await query.run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to change password.' });
+  }
+});
+
+// POST /api/auth/change-name - Update profile full name
+router.post('/change-name', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { fullName, name } = req.body || {};
+    const targetName = (fullName || name || '').trim();
+
+    if (!targetName || targetName.length < 2) {
+      return res.status(400).json({ error: 'Please enter a valid full name (at least 2 characters).' });
+    }
+
+    if (targetName.length > 100) {
+      return res.status(400).json({ error: 'Name must not exceed 100 characters.' });
+    }
+
+    const userId = req.user!.userId;
+    await query.run('UPDATE users SET full_name = ? WHERE id = ?', [targetName, userId]);
+
+    const updatedUser = await query.get<{ id: string; email: string; full_name: string; role: string }>(
+      'SELECT id, email, full_name, role FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        fullName: updatedUser.full_name,
+        role: updatedUser.role
+      },
+      message: 'Name updated successfully.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to update name.' });
+  }
+});
+
+// PUT /api/auth/profile - REST alias for updating profile name
+router.put('/profile', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { fullName, name } = req.body || {};
+    const targetName = (fullName || name || '').trim();
+
+    if (!targetName || targetName.length < 2) {
+      return res.status(400).json({ error: 'Please enter a valid full name (at least 2 characters).' });
+    }
+
+    if (targetName.length > 100) {
+      return res.status(400).json({ error: 'Name must not exceed 100 characters.' });
+    }
+
+    const userId = req.user!.userId;
+    await query.run('UPDATE users SET full_name = ? WHERE id = ?', [targetName, userId]);
+
+    const updatedUser = await query.get<{ id: string; email: string; full_name: string; role: string }>(
+      'SELECT id, email, full_name, role FROM users WHERE id = ?',
+      [userId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: updatedUser!.id,
+        email: updatedUser!.email,
+        fullName: updatedUser!.full_name,
+        role: updatedUser!.role
+      },
+      message: 'Profile updated successfully.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to update profile.' });
+  }
+});
+
 // GET /api/auth/account - Get current active Instagram account
 router.get('/account', optionalAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -174,6 +299,51 @@ router.get('/account', optionalAuth, async (req: AuthenticatedRequest, res) => {
     return res.status(200).json({ account: InstagramService.sanitizeAccount(account) });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/auth/accounts - List all connected Instagram accounts
+router.get('/accounts', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const accounts = await InstagramService.getAccounts(req.user?.userId);
+    const sanitized = InstagramService.sanitizeAccounts(accounts);
+    return res.status(200).json({ accounts: sanitized });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/auth/accounts/:id - Remove a specific connected Instagram account
+router.delete('/accounts/:id', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const isAdmin = req.user?.role === 'admin';
+    const result = await InstagramService.removeAccount(id, req.user?.userId, isAdmin);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/account/disconnect - Disconnect active or specified connected account
+router.post('/account/disconnect', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { accountId } = req.body || {};
+    const result = await InstagramService.disconnectAccount(req.user?.userId, accountId ? String(accountId) : undefined);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/accounts/:id/switch - Switch active connected account
+router.post('/accounts/:id/switch', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    const account = await InstagramService.switchActiveAccount(id, req.user?.userId);
+    return res.status(200).json({ success: true, account });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
   }
 });
 

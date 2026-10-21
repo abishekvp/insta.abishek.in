@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import {
-  ShieldAlert,
   Sliders,
   Users,
   HardDrive,
@@ -55,6 +55,10 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
   const [showClientSecret, setShowClientSecret] = useState(false);
   const [copiedRedirect, setCopiedRedirect] = useState(false);
   const [customScopeInput, setCustomScopeInput] = useState('');
+
+  const [resetPassUser, setResetPassUser] = useState<User | null>(null);
+  const [adminNewPass, setAdminNewPass] = useState('');
+  const [isAdminResettingPass, setIsAdminResettingPass] = useState(false);
 
   const currentScopes = (configValues['ig_oauth_scopes'] || 'instagram_business_basic')
     .split(/[\s,]+/)
@@ -185,6 +189,28 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
     }
   };
 
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPassUser || !adminNewPass || adminNewPass.length < 8) return;
+    setIsAdminResettingPass(true);
+    try {
+      await ApiService.adminResetPassword(resetPassUser.id, adminNewPass);
+      setStatusNotice({
+        type: 'success',
+        message: `Password updated successfully for ${resetPassUser.email}.`
+      });
+      setResetPassUser(null);
+      setAdminNewPass('');
+    } catch (err: any) {
+      setStatusNotice({
+        type: 'error',
+        message: `Failed to reset password: ${err.response?.data?.error || err.message}`
+      });
+    } finally {
+      setIsAdminResettingPass(false);
+    }
+  };
+
   const handleForcePurge = async () => {
     try {
       const res = await ApiService.forceAdminPurge();
@@ -196,20 +222,7 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
   };
 
   if (!currentUser || currentUser.role !== 'admin') {
-    return (
-      <div className="p-12 text-center bg-zinc-900/60 border border-zinc-800 rounded-2xl max-w-xl mx-auto space-y-4">
-        <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
-          <ShieldAlert className="w-6 h-6" />
-        </div>
-        <h3 className="text-base font-bold text-white">Administrator Access Required</h3>
-        <p className="text-xs text-zinc-400">
-          This portal allows managing product-wide settings, storage limits, and user privileges. Please log in with an Administrator account or promote your user via CLI command:
-        </p>
-        <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 text-xs font-mono text-zinc-300">
-          npm run make:admin -- {currentUser?.email || 'your-email@example.com'}
-        </div>
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
 
   const filteredUsers = users.filter((u) =>
@@ -306,7 +319,7 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
           <div className="flex items-center justify-between bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 shadow-sm">
             <div>
               <h3 className="text-sm font-bold text-white">Product & OAuth Configurations</h3>
-              <p className="text-xs text-zinc-400">Settings maintained live in SQLite; changes take effect immediately without restarting.</p>
+              <p className="text-xs text-zinc-400">Settings maintained live in Cloud PostgreSQL; changes take effect immediately without restarting.</p>
             </div>
 
             <button
@@ -711,13 +724,6 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
                 className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-zinc-950 border border-zinc-800 focus:border-brand-pink text-white placeholder-zinc-500 focus:outline-none transition"
               />
             </div>
-
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <span>CLI Admin Command:</span>
-              <code className="text-zinc-200 bg-zinc-900 px-2 py-1 rounded border border-zinc-800 text-[11px]">
-                npm run make:admin -- email@example.com
-              </code>
-            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -791,6 +797,17 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
                               </button>
 
                               <button
+                                onClick={() => {
+                                  setResetPassUser(u);
+                                  setAdminNewPass('');
+                                }}
+                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition"
+                                title="Set / Reset User Password"
+                              >
+                                <KeyRound className="w-3.5 h-3.5 text-zinc-400 hover:text-brand-pink" />
+                              </button>
+
+                              <button
                                 onClick={() => handleDeleteUser(u)}
                                 className="p-1.5 rounded-lg bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
                                 title="Delete User Account"
@@ -821,12 +838,13 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
           {/* Storage Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 shadow-card">
-              <span className="text-xs text-zinc-400 font-medium">SQLite Database File Size</span>
+              <span className="text-xs text-zinc-400 font-medium">Cloud PostgreSQL Database Size</span>
               <div className="text-2xl font-bold text-white mt-1">
                 {adminStats.databaseSizeFormatted}
               </div>
-              <div className="text-xs text-zinc-400 mt-1">
-                WAL Mode Enabled
+              <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Cloud Database Connected
               </div>
             </div>
 
@@ -855,6 +873,82 @@ export const AdminPortal: React.FC<Props> = ({ currentUser }) => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Reset User Password Modal */}
+      {resetPassUser && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-pink/15 border border-brand-pink/30 text-brand-pink flex items-center justify-center shrink-0">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">Set User Password</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    For {resetPassUser.fullName} ({resetPassUser.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetPassUser(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-md transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminResetPassword} className="space-y-4 pt-2">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="text"
+                  value={adminNewPass}
+                  onChange={(e) => setAdminNewPass(e.target.value)}
+                  placeholder="Enter at least 8 characters"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-950 border border-zinc-800 focus:border-brand-pink text-white focus:outline-none transition font-mono"
+                  required
+                  minLength={8}
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  The password will be immediately hashed using Scrypt and saved.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setResetPassUser(null)}
+                  disabled={isAdminResettingPass}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAdminResettingPass || adminNewPass.length < 8}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl ig-gradient-bg text-white font-semibold text-xs shadow-brand hover:opacity-95 transition disabled:opacity-50"
+                >
+                  {isAdminResettingPass ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Set Password</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

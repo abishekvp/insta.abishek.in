@@ -57,6 +57,12 @@ async function runTests() {
   console.log(`✅ 5. Session parser and sandbox preview verified (User: @${demoProfile.username}).`);
 
   // 5. Connect with Session Auto — encryption at rest and auth_method tagging
+  await query.run(`
+    INSERT INTO users (id, email, password_hash, full_name, role, is_active, created_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?)
+    ON CONFLICT (id) DO NOTHING
+  `, ['usr_test_123', 'test@example.com', 'hash123', 'Test User', 'user', new Date().toISOString()]);
+
   const linkResult = await InstagramService.connectWithSessionAuto('sandbox_demo_test', 'usr_test_123', 'test_user_connect');
   assert.strictEqual(linkResult.success, true, 'connectWithSessionAuto must succeed');
 
@@ -111,6 +117,7 @@ async function runTests() {
 
   // Clean up test account & restore clean configs
   await query.run('DELETE FROM accounts WHERE id = ?', [linkResult.accountId]);
+  await query.run('DELETE FROM users WHERE id = ?', ['usr_test_123']);
   await ConfigService.updateConfig('app_base_url', 'http://localhost:5500');
   await ConfigService.updateConfig('ig_oauth_client_id', '');
   await ConfigService.updateConfig('ig_oauth_client_secret', '');

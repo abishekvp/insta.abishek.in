@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Film,
@@ -27,6 +27,7 @@ import { Account, StorageMetrics, FollowerOverviewCounts, User } from './types';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [account, setAccount] = useState<Account | null>(null);
   const [metrics, setMetrics] = useState<StorageMetrics | null>(null);
   const [followerCounts, setFollowerCounts] = useState<FollowerOverviewCounts | null>(null);
@@ -63,6 +64,8 @@ export const App: React.FC = () => {
       setFollowerCounts(countsRes);
     } catch (err) {
       console.error('Failed to load global state:', err);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -105,6 +108,18 @@ export const App: React.FC = () => {
     refreshGlobalState();
   };
 
+  const handleDisconnectAccount = async () => {
+    if (!account) return;
+    const confirmed = window.confirm(`Are you sure you want to remove @${account.username} from your connected accounts?`);
+    if (!confirmed) return;
+    try {
+      await ApiService.removeAccount(account.id);
+      await refreshGlobalState();
+    } catch (err: any) {
+      alert(`Failed to remove account: ${err.message}`);
+    }
+  };
+
   const handleGlobalPurge = async () => {
     setIsPurging(true);
     try {
@@ -134,6 +149,7 @@ export const App: React.FC = () => {
           onLogout={handleLogout}
           onPurgeClick={handleGlobalPurge}
           isPurging={isPurging}
+          onDisconnectAccount={handleDisconnectAccount}
         />
 
         {/* Global OAuth Callback Notification Banner */}
@@ -194,11 +210,29 @@ export const App: React.FC = () => {
                 <Route path="/analytics" element={<Analytics />} />
                 <Route
                   path="/security"
-                  element={<SecurityCenter onOpenConnectModal={() => setIsConnectModalOpen(true)} />}
+                  element={
+                    <SecurityCenter
+                      currentUser={currentUser}
+                      onOpenConnectModal={() => setIsConnectModalOpen(true)}
+                      onAccountUpdated={refreshGlobalState}
+                      onUserUpdated={refreshGlobalState}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                    />
+                  }
                 />
                 <Route
                   path="/admin"
-                  element={<AdminPortal currentUser={currentUser} />}
+                  element={
+                    isAuthLoading ? (
+                      <div className="flex items-center justify-center py-24">
+                        <div className="w-7 h-7 rounded-full border-2 border-brand-pink border-t-transparent animate-spin" />
+                      </div>
+                    ) : currentUser?.role === 'admin' ? (
+                      <AdminPortal currentUser={currentUser} />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
                 />
               </Routes>
             </div>

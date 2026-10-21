@@ -8,7 +8,8 @@ import {
   LogIn,
   Instagram,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 import { Account, StorageMetrics, User } from '../types';
 
@@ -22,6 +23,7 @@ interface Props {
   onLogout: () => void;
   onPurgeClick: () => void;
   isPurging: boolean;
+  onDisconnectAccount?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -33,7 +35,8 @@ export const Navbar: React.FC<Props> = ({
   onOpenAuthModal,
   onLogout,
   onPurgeClick,
-  isPurging
+  isPurging,
+  onDisconnectAccount
 }) => {
   const isAdmin = currentUser?.role === 'admin';
 
@@ -94,6 +97,44 @@ export const Navbar: React.FC<Props> = ({
           </Link>
         )}
 
+        {/* Connected Instagram Account Status & Quick Disconnect */}
+        {account ? (
+          <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs">
+            <div className="w-5 h-5 rounded-full p-[1px] ig-gradient-bg shrink-0">
+              <img
+                src={account.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60'}
+                alt={account.username}
+                className="w-full h-full rounded-full object-cover"
+              />
+            </div>
+            <Link
+              to="/security"
+              className="text-zinc-200 hover:text-white font-medium max-w-[120px] truncate"
+              title={`Active Instagram: @${account.username}. Click to manage connected accounts.`}
+            >
+              @{account.username}
+            </Link>
+            {onDisconnectAccount && (
+              <button
+                onClick={onDisconnectAccount}
+                className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition"
+                title={`Remove @${account.username} from connected accounts`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={onOpenConnectModal}
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 hover:border-zinc-700 text-xs font-medium transition"
+            title="Connect an Instagram Account"
+          >
+            <Instagram className="w-3.5 h-3.5 text-brand-pink" />
+            <span>Connect IG</span>
+          </button>
+        )}
+
         {/* Save Story Button with Instagram Gradient */}
         <button
           onClick={onOpenQuickSave}
@@ -106,18 +147,22 @@ export const Navbar: React.FC<Props> = ({
         {/* Polished User Profile Component */}
         {currentUser ? (
           <div className="flex items-center gap-3 pl-2 sm:pl-3 border-l border-zinc-800">
-            <div className="flex items-center gap-2.5">
+            <Link
+              to="/security"
+              className="flex items-center gap-2.5 hover:opacity-85 transition group cursor-pointer"
+              title="Manage profile name, password & security"
+            >
               {/* Profile Avatar with subtle Instagram ring */}
-              <div className="w-8 h-8 rounded-full p-[1.5px] ig-gradient-bg shrink-0">
+              <div className="w-8 h-8 rounded-full p-[1.5px] ig-gradient-bg shrink-0 transition-transform group-hover:scale-105">
                 <div className="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center text-white text-xs font-bold tracking-tight">
                   {getInitials(currentUser.fullName)}
                 </div>
               </div>
 
               {/* User details */}
-              <div className="hidden sm:flex flex-col">
+              <div className="hidden sm:flex flex-col text-left">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-white leading-none">
+                  <span className="text-xs font-semibold text-white leading-none group-hover:text-brand-pink transition-colors">
                     {currentUser.fullName}
                   </span>
                   {isAdmin ? (
@@ -134,7 +179,7 @@ export const Navbar: React.FC<Props> = ({
                   {currentUser.email}
                 </span>
               </div>
-            </div>
+            </Link>
 
             {/* Sign Out Button */}
             <button

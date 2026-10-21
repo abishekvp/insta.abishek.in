@@ -3,8 +3,7 @@ import { query } from '../db/index.js';
 import { authenticateToken, requireAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { ConfigService } from '../services/configService.js';
 import { StorySaverService } from '../services/storySaverService.js';
-import fs from 'fs';
-import { DB_PATH } from '../config.js';
+import { PasswordService } from '../services/passwordService.js';
 
 const router = Router();
 
@@ -111,6 +110,28 @@ router.delete('/users/:id', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// POST /api/admin/users/:id/password - Admin reset password for a user
+router.post('/users/:id/password', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { newPassword } = req.body || {};
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    }
+
+    const user = await query.get('SELECT id FROM users WHERE id = ?', [req.params.id]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const passwordHash = PasswordService.hashPassword(newPassword);
+    await query.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, req.params.id]);
+
+    return res.status(200).json({ success: true, message: 'User password reset successfully.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/stats - System health and storage breakdown
 router.get('/stats', async (req: AuthenticatedRequest, res) => {
   try {
@@ -123,8 +144,11 @@ router.get('/stats', async (req: AuthenticatedRequest, res) => {
 
     let dbSizeBytes = 0;
     try {
-      if (fs.existsSync(DB_PATH)) {
-        dbSizeBytes = fs.statSync(DB_PATH).size;
+      const sizeRes = await query.get<{ size: number | string }>(
+        `SELECT pg_database_size(current_database()) as size`
+      );
+      if (sizeRes?.size) {
+        dbSizeBytes = Number(sizeRes.size);
       }
     } catch {}
 

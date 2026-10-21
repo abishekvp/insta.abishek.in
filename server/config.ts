@@ -1,4 +1,3 @@
-import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -6,8 +5,12 @@ dotenv.config();
 // Strict Production Environment Validation (Zero Hardcoded Fallback Defaults)
 const missingEnvVars: string[] = [];
 
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
-  missingEnvVars.push('DATABASE_URL (e.g. DATABASE_URL="./instavault.db")');
+const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
+if (!dbUrl || dbUrl.trim() === '') {
+  missingEnvVars.push('DATABASE_URL (PostgreSQL cloud connection string, e.g. postgres://user:pass@host:5432/db?sslmode=require)');
+} else if (!dbUrl.startsWith('postgres://') && !dbUrl.startsWith('postgresql://')) {
+  missingEnvVars.push('DATABASE_URL must be a valid PostgreSQL cloud connection string starting with postgres:// or postgresql://');
 }
 
 if (!process.env.APP_SECRET || process.env.APP_SECRET.trim().length < 32) {
@@ -33,6 +36,7 @@ process.env.NODE_ENV = 'production';
 export const NODE_ENV = 'production';
 export const PORT = parseInt(process.env.PORT!, 10);
 export const SECRET_KEY = process.env.APP_SECRET!;
+export const DATABASE_URL = dbUrl!;
 
 export const ROOT_DIR = process.cwd();
 
@@ -57,8 +61,3 @@ export const IG_OAUTH_SCOPES = (process.env.IG_OAUTH_SCOPES?.trim() || 'instagra
 export function isInstagramOAuthConfigured(): boolean {
   return Boolean(IG_OAUTH_CLIENT_ID && IG_OAUTH_CLIENT_SECRET);
 }
-
-// Resolves DATABASE_URL strictly from environment
-export const DB_PATH = process.env.DATABASE_URL!.startsWith('file:')
-  ? path.resolve(ROOT_DIR, process.env.DATABASE_URL!.replace('file:', ''))
-  : path.resolve(ROOT_DIR, process.env.DATABASE_URL!);
